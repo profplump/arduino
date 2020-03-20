@@ -1,7 +1,7 @@
 #include "HID-Project.h"
 
 // Optional debug build
-//#define DEBUG
+#define DEBUG
 
 // Hardware config
 const int PROGMEM NUM_POTS = 6; // Number of analog outputs
@@ -10,19 +10,22 @@ const int PROGMEM NUM_SWITCHES = 10; // Number of boolean outputs
 const int PROGMEM POTS_0 = 1; // Pots start at A1
 const int PROGMEM SWITCHES_0 = 3; // Switches start at D3
 
-// Analog resolution/min/max/deadband
+// Analog sample tuning
 const int PROGMEM ANALOG_RES = 16;
 int ANALOG_MIN = (2 << (ANALOG_RES / 2));
-#undef ANALOG_MIN_REF
 int ANALOG_MAX = (2 << (ANALOG_RES - 1));
+// Undef to use in-band sampling, or define a pin to sample a dedicated reference
+#undef ANALOG_MIN_REF
 #define ANALOG_MAX_REF A0
-const int PROGMEM ANALOG_MIN_DEAD = 12;
-const int PROGMEM ANALOG_MAX_DEAD = 12;
+// These should be big enough to squelch most sample noise
+const int PROGMEM ANALOG_MIN_DEAD = 2 << 7;
+const int PROGMEM ANALOG_MAX_DEAD = 2 << 7;
 
 // Runtime data
 int pots[NUM_POTS];
 int16_t axis[NUM_POTS];
 bool switches[NUM_SWITCHES];
+String msg = String();
 
 void setup() {
   #ifdef DEBUG
@@ -38,7 +41,7 @@ void setup() {
   // Set the analog read resolution to 16-bits
   // Older arduinos have 10-bit ADCs, newer have 12-bit ADC
   // This will use to whatever the hardware supports and pad extra bits as needed
-  analogReadResolution(16);
+  analogReadResolution(ANALOG_RES);
 
   // Send a clean report to the host
   Gamepad.begin();
@@ -65,48 +68,36 @@ void updateAnalogRange() {
 
 void loop() {  
   // Grab all the inputs
-  #ifdef DEBUG
-    Serial.print("A: ");
-  #endif
   for (uint8_t i = 0; i < NUM_POTS; i++) {
     pots[i] = analogRead(i + POTS_0);
-    #ifdef DEBUG
-      Serial.print(i);
-      Serial.print("=");
-      Serial.print(pots[i]);
-      Serial.print("\t");
-    #endif
   }
-  #ifdef DEBUG
-    Serial.println();
-    Serial.print("D: ");
-  #endif
   for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
     switches[i] = digitalRead(i + SWITCHES_0);
-    #ifdef DEBUG
-      Serial.print(i);
-      Serial.print("=");
-      Serial.print(switches[i]);
-      Serial.print("\t");
-    #endif
   }
-  #ifdef DEBUG
-    Serial.println();
-    Serial.print("Min/Max: ");
-    Serial.print(ANALOG_MIN);
-    Serial.print("/");
-    Serial.println(ANALOG_MAX);
-  #endif
 
-  // Reference pins update, now that we have data
+  // Collect analog range data
   updateAnalogRange();
+
+  // Input debug
+  #ifdef DEBUG
+    msg = "A: ";
+    for (uint8_t i = 0; i < NUM_POTS; i++) {
+      msg = msg + i + "=" + (String)pots[i] + "\t";
+    }
+    msg = msg + "Min=" + (String)ANALOG_MIN + "\tMax=" + (String)ANALOG_MAX +
+      "\nD: ";
+    for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
+      msg = msg + i + "=" + (String)switches[i] + "\t";
+    }
+    Serial.println(msg);
+  #endif
 
   // Invert the digital inputs, since we've instructed them to float high with INPUT_PULLUP
   for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
     switches[i] = !switches[i];
   }
 
-  // Apply deadbands at the edge of analog signal
+  // Apply deadbands at the edges of the analog signals
   for (uint8_t i = 0; i < NUM_POTS; i++) {
     if (pots[i] < (ANALOG_MIN + ANALOG_MIN_DEAD)) {
       pots[i] = ANALOG_MIN;
@@ -126,7 +117,7 @@ void loop() {
     } else {
       // 8-bit HID data
       float scale = (uint8_t)0xFF / (float)(ANALOG_MAX - ANALOG_MIN);
-      axis[i] = (int16_t)(scale * (pots[i] - ANALOG_MIN)) - 0x80;
+      axis[i] = (int8_t)(scale * (pots[i] - ANALOG_MIN)) - 0x80;
     }
   }
 
@@ -145,31 +136,30 @@ void loop() {
   Gamepad.ryAxis(axis[3]);
   Gamepad.zAxis(axis[4]);
   Gamepad.rzAxis(axis[5]);
+
+  // Output debug
   #ifdef DEBUG
-    Serial.print("Buttons: ");
+    msg = "Buttons: ";
     for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
       if (switches[i]) {
-        Serial.print(i);
-        Serial.print(" ");
+        msg = msg + i + " ";
       }
     }
-    Serial.println();
-    Serial.print("Axes: ");
+    msg = msg + "\nAxes: ";
     for (uint8_t i = 0; i < NUM_POTS; i++) {
-      Serial.print(i);
-      Serial.print("=");
-      Serial.print(axis[i]);
-      Serial.print("\t");
+      msg = msg + i + "=" + axis[i] + "\t";
     }
-    Serial.println();
-    Serial.println();
+    msg = msg + "\n";
+    Serial.println(msg);
   #endif
 
   // Send the gamepad state
   Gamepad.write();
   // Tiny delay to rate-limit updates
   delay(5);
+
+  // Extra delay when in debug mode
   #ifdef DEBUG
-    delay(500);
+    delay(250);
   #endif
 }

@@ -6,7 +6,7 @@
 // Hardware config
 const int PROGMEM NUM_POTS = 6; // Number of analog outputs
 const int PROGMEM NUM_AXIS_8BIT = 2; // The last two analog outputs are only 8-bit resolution
-const int PROGMEM NUM_SWITCHES = 4; // Number of boolean outputs
+const int PROGMEM NUM_SWITCHES = 10; // Number of boolean outputs
 const int PROGMEM POTS_0 = 1; // Pots start at A1
 const int PROGMEM SWITCHES_0 = 3; // Switches start at D3
 
@@ -37,7 +37,7 @@ void setup() {
 
   // Set the analog read resolution to 16-bits
   // Older arduinos have 10-bit ADCs, new have 12-bit ADC
-  // This will use to whatever the hardware supports and extra bits as needed
+  // This will use to whatever the hardware supports and pad extra bits as needed
   analogReadResolution(16);
 
   // Send a clean report to the host

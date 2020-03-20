@@ -1,7 +1,7 @@
 #include "HID-Project.h"
 
 // Optional debug build
-#define DEBUG
+//#define DEBUG
 
 // Hardware config
 const int PROGMEM NUM_POTS = 6; // Number of analog outputs
@@ -107,15 +107,15 @@ void loop() {
     }
   }
 
-  // Scale and offset pots into their HID axis representations
+  // Scale and offset pots into their output axis representations
   for (uint8_t i = 0; i < NUM_POTS; i++) {
     // TODO: Filtering
     if (i < NUM_POTS - NUM_AXIS_8BIT) {
-      // 16-bit HID dataANALO
+      // 16-bit signed
       float scale = (uint16_t)0xFFFF / (float)(ANALOG_MAX - ANALOG_MIN);
       axis[i] = (int16_t)(scale * (pots[i] - ANALOG_MIN)) - 0x8000;
     } else {
-      // 8-bit HID data
+      // 8-bit signed
       float scale = (uint8_t)0xFF / (float)(ANALOG_MAX - ANALOG_MIN);
       axis[i] = (int8_t)(scale * (pots[i] - ANALOG_MIN)) - 0x80;
     }
@@ -123,8 +123,8 @@ void loop() {
 
   // Copy inputs to outputs
   for (int i = 0; i < NUM_SWITCHES; i++) {
-    // HID buttons start at 1, so set button number i+1
-    if (switches[i] == HIGH) {
+    // Output buttons start at 1, so set button number i+1
+    if (switches[i]) {
       Gamepad.press(i + 1);
     } else {
       Gamepad.release(i + 1);

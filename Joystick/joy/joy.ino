@@ -2,6 +2,9 @@
 
 // Optional debug build
 //#define DEBUG
+#ifdef DEBUG
+  String msg = String();
+#endif
 
 // Hardware config
 const int PROGMEM NUM_POTS = 6; // Number of analog outputs
@@ -11,7 +14,7 @@ const int PROGMEM POTS_0 = 1; // Pots start at A1
 const int PROGMEM SWITCHES_0 = 3; // Switches start at D3
 
 // Analog sample tuning
-const int PROGMEM ANALOG_RES = 16;
+const uint8_t PROGMEM ANALOG_RES = 16;
 int ANALOG_MIN = (2 << (ANALOG_RES / 2));
 int ANALOG_MAX = (2 << (ANALOG_RES - 1));
 // Undef to use in-band sampling, or define a pin to sample a dedicated reference
@@ -25,7 +28,6 @@ const int PROGMEM ANALOG_MAX_DEAD = 2 << 7;
 int pots[NUM_POTS];
 int16_t axis[NUM_POTS];
 bool switches[NUM_SWITCHES];
-String msg = String();
 
 void setup() {
   #ifdef DEBUG
@@ -34,12 +36,12 @@ void setup() {
   
   // Set all the digital pins we need to INPUT_PULL mode
   // These will float at 1 and change to 0 if shorted to ground
-  for (int i = 0; i < NUM_SWITCHES; i++) {
+  for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
     pinMode(i + SWITCHES_0, INPUT_PULLUP);
   }
 
   // Set the analog read resolution to 16-bits
-  // Older arduinos have 10-bit ADCs, newer have 12-bit ADC
+  // Older Arduinos have 10-bit ADCs, newer have 12-bit ADCs
   // This will use to whatever the hardware supports and pad extra bits as needed
   analogReadResolution(ANALOG_RES);
 
@@ -122,7 +124,7 @@ void loop() {
   }
 
   // Copy inputs to outputs
-  for (int i = 0; i < NUM_SWITCHES; i++) {
+  for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
     // Output buttons start at 1, so set button number i+1
     if (switches[i]) {
       Gamepad.press(i + 1);

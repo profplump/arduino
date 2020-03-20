@@ -1,26 +1,33 @@
 #include "HID-Project.h"
 
-const int PROGMEM NUM_POTS = 6;
-const int PROGMEM NUM_SWITCHES = 4;
-const int PROGMEM POTS_0 = 1; // Pots start at Analog1
-const int PROGMEM NUM_AXIS_8BIT = 2; // The last two analog inputs are only 8-bit resolution
-const int PROGMEM SWITCHES_0 = 3; // Switches start at Digital3
-const int PROGMEM ANALOG_MIN_DEAD = 12; // Low-end deadband, since the pots don't quite go to 0
-const int PROGMEM ANALOG_MAX_DEAD = 12; // High-end deadband, since the pots don't quite go to ANALOG_MAX
+// Optional debug build
+//#define DEBUG
 
-// Do we have analog reference pins?
-#define ANALOG_MAX_REF A0
+// Hardware config
+const int PROGMEM NUM_POTS = 6; // Number of analog outputs
+const int PROGMEM NUM_AXIS_8BIT = 2; // The last two analog outputs are only 8-bit resolution
+const int PROGMEM NUM_SWITCHES = 4; // Number of boolean outputs
+const int PROGMEM POTS_0 = 1; // Pots start at A1
+const int PROGMEM SWITCHES_0 = 3; // Switches start at D3
+
+// Analog resolution/min/max/deadband
+const int PROGMEM ANALOG_RES = 16;
+int ANALOG_MIN = (2 << (ANALOG_RES - 1));
 #undef ANALOG_MIN_REF
+int ANALOG_MAX = ANALOG_MIN;
+#define ANALOG_MAX_REF A0
+const int PROGMEM ANALOG_MIN_DEAD = 12;
+const int PROGMEM ANALOG_MAX_DEAD = 12;
 
-int ANALOG_MAX = 1024;
+// Runtime data
 int pots[NUM_POTS];
 int16_t axis[NUM_POTS];
 bool switches[NUM_SWITCHES];
 
 void setup() {
-  // Debug console
-  Serial.begin(9600);
-  Serial.println("Started");
+  #ifdef DEBUG
+    Serial.begin(9600);
+  #endif
   
   // Set all the digital pins we need to INPUT_PULL mode
   // These will float at 1 and change to 0 if shorted to ground
@@ -28,59 +35,96 @@ void setup() {
     pinMode(i + SWITCHES_0, INPUT_PULLUP);
   }
 
-  // Sends a clean report to the host. This is important on any Arduino type.
+  // Set the analog read resolution to 16-bits
+  // Older arduinos have 10-bit ADCs, new have 12-bit ADC
+  // This will use to whatever the hardware supports and extra bits as needed
+  analogReadResolution(16);
+
+  // Send a clean report to the host
   Gamepad.begin();
 }
 
-// Grab the maximum value for analog inputs
+// Grab the maximum value for analog inputs, if we have a reference pin for either
 void updateAnalogRange() {
-  #ifdef ANALOG_MAX_REF
-    int ref = analogRead(ANALOG_MAX_REF);
-    if (ref > ANALOG_MAX) {
-      ANALOG_MAX = ref;
+  #ifdef ANALOG_MIN_REF
+    ANALOG_MIN = analogRead(ANALOG_MIN_REF);
+  #else
+    for (uint8_t i = 0; i < NUM_POTS; i++) {
+      ANALOG_MIN = min(ANALOG_MIN, pots[i]);
     }
   #endif
-  #ifdef ANALOG_MIN_REF
-    int ref = analogRead(ANALOG_MIN_REF);
+  #ifdef ANALOG_MAX_REF
+    ANALOG_MAX = analogRead(ANALOG_MAX_REF);
+  #else
+    for (uint8_t i = 0; i < NUM_POTS; i++) {
+      ANALOG_MAX = max(ANALOG_MAX, pots[i]);
+    }
   #endif
 }
 
-void loop() {
-  updateAnalogRange();
-  
+void loop() {  
   // Grab all the inputs
+  #ifdef DEBUG
+    Serial.print("A: ");
+  #endif
   for (uint8_t i = 0; i < NUM_POTS; i++) {
     pots[i] = analogRead(i + POTS_0);
+    #ifdef DEBUG
+      Serial.print(i);
+      Serial.print("=");
+      Serial.print(pots[i]);
+      Serial.print("\t");
+    #endif
   }
+  #ifdef DEBUG
+    Serial.println();
+    Serial.print("D: ");
+  #endif
   for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
     switches[i] = digitalRead(i + SWITCHES_0);
+    #ifdef DEBUG
+      Serial.print(i);
+      Serial.print("=");
+      Serial.print(switches[i]);
+      Serial.print("\t");
+    #endif
+  }
+  #ifdef DEBUG
+    Serial.println();
+    Serial.print("Min/Max: ");
+    Serial.print(ANALOG_MIN);
+    Serial.print("/");
+    Serial.println(ANALOG_MAX);
+  #endif
+
+  // Reference pins update, now that we have data
+  updateAnalogRange();
+
+  // Invert the digital inputs, since we've instructed them to float high with INPUT_PULLUP
+  for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
+    switches[i] = !switches[i];
   }
 
   // Apply deadbands at the edge of analog signal
   for (uint8_t i = 0; i < NUM_POTS; i++) {
-    if (pots[i] < ANALOG_MIN_DEAD) {
-      pots[i] = 0;
+    if (pots[i] < (ANALOG_MIN + ANALOG_MIN_DEAD)) {
+      pots[i] = ANALOG_MIN;
     }
     if (pots[i] > (ANALOG_MAX - ANALOG_MAX_DEAD)) {
       pots[i] = ANALOG_MAX;
     }
   }
 
-  // Invert the digital inputs, since we've instructed them to float high
-  for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
-    switches[i] = (switches[i] == LOW) ? HIGH : LOW;
-  }
-
   // Scale and offset pots into their HID axis representations
   for (uint8_t i = 0; i < NUM_POTS; i++) {
     // TODO: Filtering
     if (i < NUM_POTS - NUM_AXIS_8BIT) {
-      // 16-bit HID data
-      float scale = (uint16_t)0xFFFF / (float)ANALOG_MAX;
+      // 16-bit HID dataANALO
+      float scale = (uint16_t)0xFFFF / (float)(ANALOG_MAX - ANALOG_MIN);
       axis[i] = (int16_t)(scale * pots[i]) - 0x8000;
     } else {
       // 8-bit HID data
-      float scale = (uint8_t)0xFF / (float)ANALOG_MAX;
+      float scale = (uint8_t)0xFF / (float)(ANALOG_MAX - ANALOG_MIN);
       axis[i] = (int16_t)(scale * pots[i]) - 0x80;
     }
   }
@@ -100,9 +144,31 @@ void loop() {
   Gamepad.ryAxis(axis[3]);
   Gamepad.zAxis(axis[4]);
   Gamepad.rzAxis(axis[5]);
+  #ifdef DEBUG
+    Serial.print("Buttons: ");
+    for (uint8_t i = 0; i < NUM_SWITCHES; i++) {
+      if (switches[i]) {
+        Serial.print(i);
+        Serial.print(" ");
+      }
+    }
+    Serial.println();
+    Serial.print("Axes: ");
+    for (uint8_t i = 0; i < NUM_POTS; i++) {
+      Serial.print(i);
+      Serial.print("=");
+      Serial.print(axis[i]);
+      Serial.print("\t");
+    }
+    Serial.println();
+    Serial.println();
+  #endif
 
   // Send the gamepad state
   Gamepad.write();
   // Tiny delay to rate-limit updates
   delay(5);
+  #ifdef DEBUG
+    delay(500);
+  #endif
 }

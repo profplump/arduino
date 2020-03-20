@@ -12,9 +12,9 @@ const int PROGMEM SWITCHES_0 = 3; // Switches start at D3
 
 // Analog resolution/min/max/deadband
 const int PROGMEM ANALOG_RES = 16;
-int ANALOG_MIN = (2 << (ANALOG_RES - 1));
+int ANALOG_MIN = (2 << (ANALOG_RES / 2));
 #undef ANALOG_MIN_REF
-int ANALOG_MAX = ANALOG_MIN;
+int ANALOG_MAX = (2 << (ANALOG_RES - 1));
 #define ANALOG_MAX_REF A0
 const int PROGMEM ANALOG_MIN_DEAD = 12;
 const int PROGMEM ANALOG_MAX_DEAD = 12;
@@ -36,7 +36,7 @@ void setup() {
   }
 
   // Set the analog read resolution to 16-bits
-  // Older arduinos have 10-bit ADCs, new have 12-bit ADC
+  // Older arduinos have 10-bit ADCs, newer have 12-bit ADC
   // This will use to whatever the hardware supports and pad extra bits as needed
   analogReadResolution(16);
 
@@ -44,7 +44,8 @@ void setup() {
   Gamepad.begin();
 }
 
-// Grab the maximum value for analog inputs, if we have a reference pin for either
+// Grab the min/max value for analog inputs, if we have a reference pin for either
+// Otherwise assume the lowest/highest readings we've seen thus far represent the range
 void updateAnalogRange() {
   #ifdef ANALOG_MIN_REF
     ANALOG_MIN = analogRead(ANALOG_MIN_REF);
@@ -121,11 +122,11 @@ void loop() {
     if (i < NUM_POTS - NUM_AXIS_8BIT) {
       // 16-bit HID dataANALO
       float scale = (uint16_t)0xFFFF / (float)(ANALOG_MAX - ANALOG_MIN);
-      axis[i] = (int16_t)(scale * pots[i]) - 0x8000;
+      axis[i] = (int16_t)(scale * (pots[i] - ANALOG_MIN)) - 0x8000;
     } else {
       // 8-bit HID data
       float scale = (uint8_t)0xFF / (float)(ANALOG_MAX - ANALOG_MIN);
-      axis[i] = (int16_t)(scale * pots[i]) - 0x80;
+      axis[i] = (int16_t)(scale * (pots[i] - ANALOG_MIN)) - 0x80;
     }
   }
 
